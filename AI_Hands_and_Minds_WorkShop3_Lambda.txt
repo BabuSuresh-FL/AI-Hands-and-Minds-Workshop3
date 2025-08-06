@@ -1,0 +1,294 @@
+import boto3
+import json
+import logging
+from typing import Dict, List, Optional, Any
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+class BedrockKnowledgeBaseClient:
+    def __init__(self, region_name: str = 'us-east-1'):
+        """
+        Initialize the Bedrock Knowledge Base client
+        
+        Args:
+            region_name: AWS region name
+        """
+        self.bedrock_agent_runtime = boto3.client(
+            'bedrock-agent-runtime',
+            region_name=region_name
+        )
+        
+    def query_knowledge_base(
+        self,
+        knowledge_base_id: str,
+        query: str,
+        model_arn: str,
+        max_results: int = 10,
+        retrieval_configuration: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Query a knowledge base with structured data store
+        
+        Args:
+            knowledge_base_id: The ID of your knowledge base
+            query: The query string
+            model_arn: ARN of the model to use for generation
+            max_results: Maximum number of results to return
+            retrieval_configuration: Optional retrieval configuration
+            
+        Returns:
+            Response from the knowledge base query
+        """
+        
+        # Default retrieval configuration for structured data
+        if retrieval_configuration is None:
+            retrieval_configuration = {
+                'vectorSearchConfiguration': {
+                    'numberOfResults': max_results,
+                    'overrideSearchType': 'HYBRID'  # Can be SEMANTIC, HYBRID
+                }
+            }
+        
+        try:
+            response = self.bedrock_agent_runtime.retrieve_and_generate(
+                input={
+                    'text': query
+                },
+                retrieveAndGenerateConfiguration={
+                    'type': 'KNOWLEDGE_BASE',
+                    'knowledgeBaseConfiguration': {
+                        'knowledgeBaseId': knowledge_base_id,
+                        'modelArn': model_arn,
+                        'retrievalConfiguration': retrieval_configuration
+                    }
+                }
+            )
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error querying knowledge base: {str(e)}")
+            raise
+    
+    def retrieve_only(
+        self,
+        knowledge_base_id: str,
+        query: str,
+        max_results: int = 10,
+        retrieval_configuration: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Retrieve documents without generation (retrieval only)
+        
+        Args:
+            knowledge_base_id: The ID of your knowledge base
+            query: The query string
+            max_results: Maximum number of results to return
+            retrieval_configuration: Optional retrieval configuration
+            
+        Returns:
+            Retrieved documents
+        """
+        
+        if retrieval_configuration is None:
+            retrieval_configuration = {
+                'vectorSearchConfiguration': {
+                    'numberOfResults': max_results,
+                    'overrideSearchType': 'HYBRID'
+                }
+            }
+        
+        try:
+            response = self.bedrock_agent_runtime.retrieve(
+                knowledgeBaseId=knowledge_base_id,
+                retrievalQuery={
+                    'text': query
+                },
+                retrievalConfiguration=retrieval_configuration
+            )
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error retrieving from knowledge base: {str(e)}")
+            raise
+
+# Configuration - Set these as environment variables in Lambda
+import os
+KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'VQCBRJTTDH')
+# ===============================================================================================================================
+# MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0')
+# MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0')
+# MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0')
+# MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0')
+# ===============================================================================================================================
+MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0')  
+AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
+
+# Initialize the client (outside handler for reuse).
+kb_client = BedrockKnowledgeBaseClient(region_name=AWS_REGION)
+
+def create_response(status_code: int, body: dict, headers: dict = None) -> dict:
+    """
+    Create a properly formatted API Gateway response
+    """
+    default_headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',  # Configure for your domain in production
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+    }
+    
+    if headers:
+        default_headers.update(headers)
+    
+    return {
+        'statusCode': status_code,
+        'headers': default_headers,
+        'body': json.dumps(body)
+    }
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda handler function for API Gateway integration
+    """
+    try:
+        # Log the incoming event for debugging
+        logger.info(f"Received event: {json.dumps(event)}")
+        
+        # Handle CORS preflight requests
+        if event.get('httpMethod') == 'OPTIONS':
+            return create_response(200, {'message': 'CORS preflight successful'})
+        
+        # Parse the request body
+        body = event.get('body', '{}')
+        if isinstance(body, str):
+            try:
+                body = json.loads(body)
+            except json.JSONDecodeError:
+                return create_response(400, {
+                    'error': 'Invalid JSON in request body',
+                    'success': False
+                })
+        
+        # Extract parameters
+        query = body.get('query', '').strip()
+        max_results = body.get('max_results', 10)
+        operation_type = body.get('operation_type', 'query')  # 'query' or 'retrieve'
+        filters = body.get('filters')
+        
+        # Validate required parameters
+        if not query:
+            return create_response(400, {
+                'error': 'Query parameter is required',
+                'success': False
+            })
+        
+        # Validate max_results
+        if not isinstance(max_results, int) or max_results < 1 or max_results > 100:
+            max_results = 10
+        
+        logger.info(f"Processing query: {query}, operation: {operation_type}")
+        
+        # Handle different operation types
+        if operation_type == 'retrieve':
+            # Retrieval only operation
+            retrieval_config = None
+            if filters:
+                retrieval_config = {
+                    'vectorSearchConfiguration': {
+                        'numberOfResults': max_results,
+                        'overrideSearchType': 'HYBRID',
+                        'filter': filters
+                    }
+                }
+            
+            response = kb_client.retrieve_only(
+                knowledge_base_id=KNOWLEDGE_BASE_ID,
+                query=query,
+                max_results=max_results,
+                retrieval_configuration=retrieval_config
+            )
+            
+            # Format retrieval response
+            formatted_results = []
+            for result in response.get('retrievalResults', []):
+                formatted_results.append({
+                    'content': result.get('content', {}).get('text', ''),
+                    'score': result.get('score', 0),
+                    'metadata': result.get('metadata', {}),
+                    'location': result.get('location', {})
+                })
+            
+            return create_response(200, {
+                'success': True,
+                'query': query,
+                'answer': f"Retrieved {len(formatted_results)} relevant documents for your query."
+            })
+        
+        else:
+            # Query with generation operation (default)
+            retrieval_config = None
+            if filters:
+                retrieval_config = {
+                    'vectorSearchConfiguration': {
+                        'numberOfResults': max_results,
+                        'overrideSearchType': 'HYBRID',
+                        'filter': filters
+                    }
+                }
+            
+            response = kb_client.query_knowledge_base(
+                knowledge_base_id=KNOWLEDGE_BASE_ID,
+                query=query,
+                model_arn=MODEL_ARN,
+                max_results=max_results,
+                retrieval_configuration=retrieval_config
+            )
+            
+            # Format query response
+            generated_text = response.get('output', {}).get('text', '')
+            
+            # Format citations
+            citations = []
+            for citation in response.get('citations', []):
+                retrieved_refs = []
+                for ref in citation.get('retrievedReferences', []):
+                    retrieved_refs.append({
+                        'content': ref.get('content', {}).get('text', ''),
+                        'metadata': ref.get('metadata', {}),
+                        'location': ref.get('location', {})
+                    })
+                
+                citations.append({
+                    'generated_response_part': citation.get('generatedResponsePart', {}).get('textResponsePart', {}).get('text', ''),
+                    'retrieved_references': retrieved_refs
+                })
+            
+            return create_response(200, {
+                'success': True,
+                'query': query,
+                'answer': generated_text
+            })
+    
+    except Exception as e:
+        logger.error(f"Error processing request: {str(e)}", exc_info=True)
+        return create_response(500, {
+            'error': f'Internal server error: {str(e)}',
+            'success': False
+        })
+
+# Example of how to test locally (remove this in production)
+if __name__ == "__main__":
+    # Test event structure
+    test_event = {
+        'httpMethod': 'POST',
+        'body': json.dumps({
+            'query': 'What are the sales figures for Q4 2024?',
+            'max_results': 5,
+            'operation_type': 'query'
+        })
+    }
+    
+    result = lambda_handler(test_event, None)
+    print(json.dumps(result, indent=2))
