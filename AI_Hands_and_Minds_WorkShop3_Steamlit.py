@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import json
 
+# This code should NOT be used for anything other than testing purposes in a NO-RISK environment.
+
 # Configure the page
 st.set_page_config(
     page_title="AI Assistant",
@@ -10,7 +12,7 @@ st.set_page_config(
 )
 
 # Hardcoded API Gateway URL - CHANGE THIS TO YOUR URL
-# API_URL = "https://3ab2nker2e.execute-api.us-east-1.amazonaws.com/dev/chatbot"
+# API_URL = "https://abcdefghij.execute-api.us-east-1.amazonaws.com/dev/chatbot"
 API_URL = "<....Paste your URL here....>"
 
 # Custom CSS for chat-like interface
