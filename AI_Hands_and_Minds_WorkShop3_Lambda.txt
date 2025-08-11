@@ -7,8 +7,11 @@ from typing import Dict, List, Optional, Any
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# This code should NOT be used for anything other than testing purposes in a no-risk environment.
+# def __init__(self, region_name: str = 'us-east-1'):
+# Make sure to insert your region in the below statement. The sample format is shown above.
 class BedrockKnowledgeBaseClient:
-    def __init__(self, region_name: str = 'us-east-1'):
+    def __init__(self, region_name: str = '<...Your Value...>'):
         """
         Initialize the Bedrock Knowledge Base client
         
@@ -115,17 +118,17 @@ class BedrockKnowledgeBaseClient:
 
 # Configuration - Set these as environment variables in Lambda
 import os
-KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', '<...PasteYour KB ID here...>')
+KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', '<...Your Value...>')
 # ===============================================================================================================================
-# KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'ASCBRJTTCS')
+# KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'OAMABCD1EZ')
 # MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0')
 # MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0')
 # MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0')
 # MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0')
 # AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 # ===============================================================================================================================
-MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:us-east-1::foundation-model/<...PasteYour Model ID here...>')  
-AWS_REGION = os.environ.get('AWS_REGION', '<...PasteYour Region here...>')
+MODEL_ARN = os.environ.get('MODEL_ARN', 'arn:aws:bedrock:<...Your Value...>::foundation-model/<...Your Value...>')  
+AWS_REGION = os.environ.get('AWS_REGION', '<...Your Value...>')
 
 # Initialize the client (outside handler for reuse).
 kb_client = BedrockKnowledgeBaseClient(region_name=AWS_REGION)
@@ -293,5 +296,4 @@ if __name__ == "__main__":
     }
     
     result = lambda_handler(test_event, None)
-
     print(json.dumps(result, indent=2))
